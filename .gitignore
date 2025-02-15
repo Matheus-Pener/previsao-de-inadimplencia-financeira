@@ -1,0 +1,17 @@
+# Ignorar arquivos de datasets
+/data/cs-training.csv
+/data/cs-training-processed-final.csv
+
+# Ignorar arquivos de modelos
+/models/*.pkl
+/models/*.h5
+/models/*.zip
+
+# Ignorar arquivos do sistema
+__pycache__/
+*.log
+.DS_Store
+
+# Ignorar arquivos do VS Code
+.vscode/
+*.code-workspace
