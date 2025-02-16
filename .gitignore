@@ -1,7 +1,8 @@
 # Ignorar arquivos de datasets
 /data/cs-training.csv
 /data/cs-training-processed-final.csv
-
+/data/dados_teste.csv
+/data/previsoes_teste
 # Ignorar arquivos de modelos
 /models/*.pkl
 /models/*.h5

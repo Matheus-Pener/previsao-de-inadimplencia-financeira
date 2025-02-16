@@ -3,7 +3,9 @@ import numpy as np
 from pytorch_tabnet.tab_model import TabNetClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_sample_weight
-from sklearn.metrics import roc_auc_score, classification_report
+from sklearn.metrics import roc_auc_score
+from skopt import gp_minimize
+from skopt.space import Real, Integer
 import torch
 
 # Carregar os dados tratados
@@ -19,43 +21,84 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # Ajustar pesos para classes desbalanceadas
 sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
 
-# Criar e configurar o modelo TabNet com ajustes de estabilidade
-model = TabNetClassifier(
+# Definir o espaço de busca para Bayesian Optimization
+search_space = [
+    Real(1e-4, 1e-2, "log-uniform"),  # Learning rate
+    Real(1e-4, 1e-2, "log-uniform"),  # Lambda sparse
+    Real(0.5, 2.0, "uniform"),        # Gamma
+    Integer(512, 2048)                 # Batch size
+]
+
+# Função de avaliação para o otimizador Bayesian
+def objective(params):
+    lr, lambda_sparse, gamma, batch_size = params
+    print(f"Testando: lr={lr}, lambda_sparse={lambda_sparse}, gamma={gamma}, batch_size={batch_size}")
+    
+    model = TabNetClassifier(
+        optimizer_fn=torch.optim.Adam,
+        optimizer_params={'lr': lr},
+        scheduler_params={"step_size":15, "gamma":0.7},
+        scheduler_fn=torch.optim.lr_scheduler.StepLR,
+        mask_type='entmax',
+        lambda_sparse=lambda_sparse,
+        gamma=gamma
+    )
+    
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_test, y_test)],
+        eval_name=["valid"],
+        eval_metric=["auc"],
+        batch_size=int(batch_size),
+        virtual_batch_size=128,
+        max_epochs=500,
+        patience=20,
+        num_workers=0,
+        drop_last=False,
+        weights=sample_weights
+    )
+    
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    auc_score = roc_auc_score(y_test, y_pred_proba)
+    print(f"AUC-ROC Score: {auc_score}")
+    
+    return -auc_score  # Minimização (invertido porque queremos maximizar AUC)
+
+# Rodar otimização bayesiana
+print("Iniciando otimização bayesiana de hiperparâmetros...")
+res = gp_minimize(objective, search_space, n_calls=20, random_state=42)
+
+# Melhor combinação de hiperparâmetros encontrada
+best_params = res.x
+best_auc = -res.fun
+print(f"Melhores hiperparâmetros: lr={best_params[0]}, lambda_sparse={best_params[1]}, gamma={best_params[2]}, batch_size={int(best_params[3])}")
+print(f"Melhor AUC-ROC: {best_auc}")
+
+# Treinar o modelo final com os melhores hiperparâmetros
+final_model = TabNetClassifier(
     optimizer_fn=torch.optim.Adam,
-    optimizer_params={'lr': 1e-3},  # Reduzindo ainda mais a taxa de aprendizado
-    scheduler_params={"step_size":15, "gamma":0.7},  # Ajustando a taxa de decaimento do learning rate
+    optimizer_params={'lr': best_params[0]},
+    scheduler_params={"step_size":15, "gamma":0.7},
     scheduler_fn=torch.optim.lr_scheduler.StepLR,
-    mask_type='entmax',  # Melhor que softmax para seleção de features
-    lambda_sparse=1e-3,  # Maior regularização para evitar overfitting
-    gamma=1.0  # Reduzindo o impacto do balanceamento interno
+    mask_type='entmax',
+    lambda_sparse=best_params[1],
+    gamma=best_params[2]
 )
 
-# Treinar o modelo com pesos ajustados
-print("Treinando o modelo TabNet com ajustes otimizados...")
-model.fit(
+final_model.fit(
     X_train, y_train,
     eval_set=[(X_test, y_test)],
     eval_name=["valid"],
     eval_metric=["auc"],
-    batch_size=1024,
+    batch_size=int(best_params[3]),
     virtual_batch_size=128,
-    max_epochs=1000,  # Permitindo mais épocas para melhor aprendizado
-    patience=20,  # Aumentando paciência para evitar early stopping prematuro
+    max_epochs=500,
+    patience=20,
     num_workers=0,
     drop_last=False,
-    weights=sample_weights  # Aplicando pesos às classes
+    weights=sample_weights
 )
 
-# Fazer previsões
-y_pred_proba = model.predict_proba(X_test)[:, 1]
-y_pred = (y_pred_proba > 0.5).astype(int)
-
-# Avaliação do modelo
-auc_score = roc_auc_score(y_test, y_pred_proba)
-print("AUC-ROC Score:", auc_score)
-print("Relatório de Classificação:")
-print(classification_report(y_test, y_pred, zero_division=1))
-
-# Salvar o modelo treinado
-model.save_model("../models/tabnet_model.zip")
-print("Modelo salvo em ../models/tabnet_model.zip")
+# Salvar o melhor modelo
+final_model.save_model("../models/tabnet_best_model.zip")
+print("Melhor modelo salvo em ../models/tabnet_best_model.zip")
