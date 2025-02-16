@@ -3,6 +3,7 @@
 /data/cs-training-processed-final.csv
 /data/dados_teste.csv
 /data/previsoes_teste
+/data/~$previsoes_teste
 # Ignorar arquivos de modelos
 /models/*.pkl
 /models/*.h5
@@ -16,3 +17,5 @@ __pycache__/
 # Ignorar arquivos do VS Code
 .vscode/
 *.code-workspace
+/conversor
+data/~$previsoes_teste.xlsx

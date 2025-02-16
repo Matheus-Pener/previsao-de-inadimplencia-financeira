@@ -75,3 +75,30 @@ plt.xlabel("Faixa Salarial (Normalizada)")
 plt.ylabel("Probabilidade de Inadimplência")
 plt.xticks(rotation=45)
 plt.show()
+
+import numpy as np
+import pandas as pd
+from sklearn.metrics import precision_recall_curve, average_precision_score
+import matplotlib.pyplot as plt
+# Definir valores reais e probabilidades preditas
+y_true = df_previsoes["valor_real"]  # Coluna com os valores reais (0 = adimplente, 1 = inadimplente)
+y_scores = df_previsoes["Probabilidade_Inadimplente"]  # Probabilidade predita pelo modelo
+
+# Calcular a Precisão Média Média (MAP)
+average_precision = average_precision_score(y_true, y_scores)
+
+# Exibir resultado
+print(f"Média de Precisão Média (MAP): {average_precision:.4f}")
+
+# Criar a Curva de Precisão-Recall
+precision, recall, _ = precision_recall_curve(y_true, y_scores)
+
+# Plotar a curva
+plt.figure(figsize=(8, 5))
+plt.plot(recall, precision, marker=".", label=f"MAP = {average_precision:.4f}")
+plt.xlabel("Recall")
+plt.ylabel("Precisão")
+plt.title("Curva de Precisão-Recall")
+plt.legend()
+plt.grid()
+plt.show()
